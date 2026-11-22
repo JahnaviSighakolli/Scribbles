@@ -1,89 +1,82 @@
 
-Public Sub UndoLastChange()
+Public Sub LogCellChange(ByVal ws As Worksheet, _
+                         ByVal Target As Range)
 
-    Dim record As clsUndoRecord
-    Dim ws As Worksheet
-    Dim logWs As Worksheet
+    Dim logSheet As Worksheet
     Dim cell As Range
-    Dim oldData As Variant
-    Dim i As Long
+    Dim oldValue As Variant
+    Dim newValue As String
     Dim nextRow As Long
-    Dim currentValue As String
-    Dim restoredValue As String
     Dim previousEvents As Boolean
+    Dim cellAddress As String
 
     On Error GoTo ErrorHandler
 
-    InitializeUndoManager
-
-    If UndoHistory.Count = 0 Then Exit Sub
-
     previousEvents = Application.EnableEvents
     Application.EnableEvents = False
-    IsPerformingUndo = True
 
-    'Get the latest Undo record
-    Set record = UndoHistory(UndoHistory.Count)
+    'Check that a snapshot exists for this worksheet
+    If PreviousSheet <> ws.CodeName Then GoTo CleanExit
+    If PreviousValues Is Nothing Then GoTo CleanExit
 
-    Set ws = ThisWorkbook.Worksheets(record.SheetName)
-    Set logWs = GetOrCreateChangeLog()
+    Set logSheet = GetOrCreateChangeLog()
 
-    'Remove this record from the Undo history
-    UndoHistory.Remove UndoHistory.Count
+    For Each cell In Target.Cells
 
-    'Restore the original contents
-    For i = LBound(record.CellAddresses) _
-        To UBound(record.CellAddresses)
+        cellAddress = cell.Address(False, False)
+        newValue = GetCellContent(cell)
 
-        Set cell = ws.Range(record.CellAddresses(i))
-
-        oldData = record.OldContents(i)
-
-        currentValue = GetCellContent(cell)
-
-        If oldData(0) = True Then
-            cell.Formula = oldData(1)
-        ElseIf IsEmpty(oldData(1)) Then
-            cell.ClearContents
+        'Get the value captured before the edit
+        If PreviousValues.Exists(cellAddress) Then
+            oldValue = PreviousValues(cellAddress)
         Else
-            cell.Value2 = oldData(1)
+            oldValue = "[BLANK]"
         End If
 
-        restoredValue = GetCellContent(cell)
+        'Log only actual changes
+        If Not ValuesAreSame(oldValue, newValue) Then
 
-        'Record the reversal in the audit log
-        nextRow = logWs.Cells(logWs.Rows.Count, "A") _
-                    .End(xlUp).Row + 1
+            nextRow = logSheet.Cells(logSheet.Rows.Count, "A") _
+                              .End(xlUp).Row + 1
 
-        With logWs
-            .Cells(nextRow, 1).Value = Now
-            .Cells(nextRow, 2).Value = Environ$("Username")
-            .Cells(nextRow, 3).Value = ws.Name
-            .Cells(nextRow, 4).Value = cell.Address(False, False)
-            .Cells(nextRow, 5).Value = LogValue(currentValue)
-            .Cells(nextRow, 6).Value = LogValue(restoredValue)
-        End With
+            With logSheet
+                .Cells(nextRow, 1).Value = Now
+                .Cells(nextRow, 2).Value = Environ$("Username")
+                .Cells(nextRow, 3).Value = ws.Name
+                .Cells(nextRow, 4).Value = cellAddress
+                .Cells(nextRow, 5).Value = LogValue(oldValue)
+                .Cells(nextRow, 6).Value = LogValue(newValue)
+            End With
 
-    Next i
+        End If
+
+        'Refresh snapshots so another edit in the same selection
+        'uses the latest values as its starting point.
+        If PreviousValues.Exists(cellAddress) Then
+            PreviousValues(cellAddress) = newValue
+        End If
+
+        If Not PreviousVerticalValues Is Nothing Then
+            If PreviousVerticalValues.Exists(cellAddress) Then
+                PreviousVerticalValues(cellAddress) = newValue
+            End If
+        End If
+
+        If Not PreviousHorizontalValues Is Nothing Then
+            If PreviousHorizontalValues.Exists(cellAddress) Then
+                PreviousHorizontalValues(cellAddress) = newValue
+            End If
+        End If
+
+    Next cell
 
 CleanExit:
-
-    IsPerformingUndo = False
     Application.EnableEvents = previousEvents
-
-    'Register the next Undo operation
-    If UndoHistory.Count > 0 Then
-        Application.OnUndo _
-            "Undo last logged change", _
-            "'" & ThisWorkbook.Name & "'!UndoLastChange"
-    End If
-
     Exit Sub
 
 ErrorHandler:
-
-    MsgBox "Undo Error: " & Err.Description, vbExclamation
-
+    MsgBox "Change Logger Error: " & Err.Description, _
+           vbExclamation, "Change Logger"
     Resume CleanExit
 
 End Sub
