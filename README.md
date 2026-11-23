@@ -24,3 +24,20 @@ If PreviousFullValues.Exists(cellAddress) Then
 End If
 
 Debug.Print "Current value: " & newValue
+
+---
+
+
+'Capture full snapshot only when first initialized
+'or when switching to another worksheet
+If PreviousFullValues Is Nothing Then
+    Set PreviousFullValues = CreateObject("Scripting.Dictionary")
+End If
+
+If PreviousSheet <> ws.CodeName Then
+    Set PreviousFullValues = CreateObject("Scripting.Dictionary")
+
+    For Each cell In ws.UsedRange.Cells
+        PreviousFullValues(cell.Address(False, False)) = GetCellContent(cell)
+    Next cell
+End If
