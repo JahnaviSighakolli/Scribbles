@@ -12,3 +12,15 @@ Debug.Print "INSERTION PATH: " & insertionType
 ---
 
 Debug.Print "DELETION PATH: " & deletionType
+
+---
+
+Debug.Print "Cell: " & cellAddress
+Debug.Print "In PreviousValues: " & PreviousValues.Exists(cellAddress)
+Debug.Print "In PreviousFullValues: " & PreviousFullValues.Exists(cellAddress)
+
+If PreviousFullValues.Exists(cellAddress) Then
+    Debug.Print "Original value: " & PreviousFullValues(cellAddress)
+End If
+
+Debug.Print "Current value: " & newValue
